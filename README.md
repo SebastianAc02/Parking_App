@@ -38,10 +38,7 @@ pip install -r requirements.txt
 
 The project consists of the following files:
 
-- `app.py`: The main application file that defines the Dash app and the layout.
-- `server.py`: Contains the `ServerGPT` class that sets up the Dash app and defines the callbacks.
-- `utils.py`: Includes utility functions for handling parking lot data and generating the parking lot graph.
-- `bmw.jpg`: Sample image of a car used for visualization purposes.
+- `index.py`: The main application file that defines the Dash app and the layout plus all clases needed for the project
 - `README.md`: Documentation file providing information about the project.
 
 ## Dependencies
