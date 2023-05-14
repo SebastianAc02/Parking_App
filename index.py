@@ -4,9 +4,12 @@ from dash import html
 from dash.dependencies import Input, Output, State
 import os
 import pandas as pd
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 import numpy as np
 from PIL import Image
+from dash.dash import no_update
+
+
 
 
 
@@ -15,18 +18,73 @@ import openpyxl
 
 EXCEL_PATH = "./carparkinglot.xlsx"
  
+class ExcelColumns:
+    Type = None
+    Plate = None
+    Entrance_Date = None
+    Exit_Date = None
+    Cell = None
+    Cell_State = None 
+
+
 class Parking_Lot:
     def  __init__(self,max_opcupation):
-        self.max_ocupation = max_ocupation
+        self.max_ocupation = max_opcupation
         self.current_ocupation = 0 
+        #column = {"Type", "Plate","Entrance_Date", "Exit_Date", "Cell", "Cell_State" }
+        self.parking_lot = self.createParkingLot()
         
-    
-    def addVehicle(self, vehicle):
-        print("hello world ")
-         #check if the vehicle is ok to get into thu licence plate
+        self.Excel = Excel(ExcelColumns)
+        self.getVehicles()
+        print("sucess")
 
-    def exitVehicle(self, vehicle):
-        print("something ")
+    def getParkingCurrent(self):
+        return self.parking_lot
+    
+    def addVehicle(self, type, plate , cell ):
+        if(self.current_ocupation >= self.max_ocupation):
+            return False
+
+        if(self.Excel.get_car_by_plate(plate, "Occupied")):
+            return False 
+        
+        if not(self.Excel.checkCellNUmberisFree(cell)):
+            return False
+
+
+
+        self.current_ocupation = self.current_ocupation+1
+        newVehicle =  Vehicle(type, plate, cell )
+       
+        self.Excel.open_car(newVehicle)
+
+        fila = (num - 1) // self.columns
+        columna = (num - 1) % self.columns 
+        print('Hi thereee',fila, columna)
+        self.parking_lot[fila][columna] = "Occupied"
+         
+        return True 
+
+    def getCols(self):
+        return self.columns 
+
+    def getRows(self):
+        return self.rows
+
+    def createParkingLot(self):
+        self.rows = 10
+        self.columns = 8
+        parking_lot = [['Empty' for _ in range(self.columns)] for _ in range(self.rows)]
+        return parking_lot
+        
+
+    def exitVehicle(self, plate):
+      
+        if not (self.Excel.get_car_by_plate(plate, "Occupied") ):
+            return False 
+
+        self.current_ocupation = self.current_ocupation-1
+        self.Excel.close_car(plate)
 
     def isVehicleRegistered(self):
         print("heloo world") 
@@ -35,28 +93,55 @@ class Parking_Lot:
         return self.current_ocupation >= self.max_ocupation 
 
     def getVehicles(self):
-        return [
-    {"Row": 1, "Column": 1, "Occupied": 0},
-    {"Row": 1, "Column": 2, "Occupied": 1},
-    {"Row": 1, "Column": 3, "Occupied": 0},
-    {"Row": 1, "Column": 4, "Occupied": 0},
-    {"Row": 2, "Column": 1, "Occupied": 1},
-    {"Row": 2, "Column": 2, "Occupied": 1},
-    {"Row": 2, "Column": 3, "Occupied": 0},
-    {"Row": 2, "Column": 4, "Occupied": 1},
-    # ... more entries for each parking space ...
-    ]
+        cars = self.Excel.getCarsByState()
 
+        if (len(cars) <= 0):
+            return []
+        
+        for num in cars:
+            print(f"cars: for {num}")
+            
+            fila = (num - 1) // self.columns
+            columna = (num - 1) % self.columns 
+            self.parking_lot[fila][columna] = "Occupied"
 
-
-class Vehicle:
-    def __init__(self, type, plate):
-        self.type = type
-        self.plate = plate
-        self.entryHour = getHourNow()
+        
+        
 
     
 
+
+class Vehicle:
+    def __init__(self, type, plate, cell ):
+        if not (self.checkPlateValid(plate)):
+             raise ValueError("La placa no es válida")
+        if not(cell >= 0 and cell <= 80):
+            raise ValueError("La celda no es válida")
+
+        self.type = type
+        self.plate = plate
+        self.entryHour = self.getHourNow()
+        self.exitDate = ""
+        self.cell = cell 
+        self.setCellState("Occupied")
+
+    def setCellState(self, cellState):
+        self.cellState = cellState
+
+    def checkPlateValid(self, plate):
+        plate = plate.replace(" ", "").upper()
+
+        if len(plate) != 6:
+            return False
+
+        num_letters = sum(c.isalpha() for c in plate)
+        num_numbers = sum(c.isdigit() for c in plate)
+
+        # Comprobar si la placa tiene exactamente 3 letras y 3 números
+        if num_letters == 3 and num_numbers == 3:
+            return True
+        else:
+            return False
 
     def getHourNow(self):
         ahora = datetime.now()
@@ -75,119 +160,173 @@ class ServerGPT:
         self.app_name = name
         self.file_to_watch = EXCEL_PATH
         self.layout = self.create_layout()
+        self.Parking = Parking_Lot(80)
         self.set_callbacks()
 
+    
+    def create_graph(self, parking_lot, flag=0 ):
+        # rows = 5
+        # columns = 8
+        # parking_lot = [['Empty' for _ in range(columns)] for _ in range(rows)]
+         
+
+        # # Example of adding a car at row 2, column 4
+        # parking_lot[0][0] = "Occupied"
+       #rint(f"parking lot: {parking_lot}")
+        fig = go.Figure()
+         
+        images = []  # List to hold the images
+
+        for i in range(5):
+            for j in range(8):
+                color = None 
+                
+                if(parking_lot[i][j] == "Empty"):
+                    color="white"
+                else:
+                    color="lightblue"
+                 
+                fig.add_trace(go.Scatter(
+                    x=[j+1], y=[i+1],
+                    mode='markers+text',
+                    marker=dict(
+                        size=50, 
+                        color=color,
+                        line=dict(
+                            color='Blue',
+                            width=2
+                        ),
+                        symbol='square'
+                    ),
+
+                   text = str((i * 8 + j + 1) + (20*flag)) if parking_lot[i][j] == "Empty" else "🏎️",
+                    textposition="middle center",
+                    hovertemplate = f'Row: {i+1}<br>Column: {j+1}<br>Status: {"Empty" if parking_lot[i][j] == "Empty" else "Occupied"}<extra></extra>'
+                ))
+               
+
+        fig.update_layout(showlegend=False,
+                        xaxis=dict(range=[0, 10], showgrid=False, zeroline=False, showticklabels=False),
+                        yaxis=dict(range=[0, 7], showgrid=False, zeroline=False, autorange='reversed', showticklabels=False),
+                        plot_bgcolor='White',
+                        images=images)
+
+        return fig
+
+
     def create_layout(self):
-        layout = html.Div([
-            html.H1(f"{self.app_name}"),
+       
+        return  html.Div(children=[
+        # First row with H1
+        html.Div([
+            html.H1(f"{self.app_name}", style={'textAlign': 'center'})
+        ]),
+        # Next row with a dropdown and a button
+        html.Div([
             dcc.Dropdown(
-                id="space_selector",
+                id='select-parking-space',
                 options=[
-                    {"label": "Space A", "value": "A"},
-                    {"label": "Space B", "value": "B"},
+                    {'label': 'A', 'value': 'A'},
+                    {'label': 'B', 'value': 'B'}
                 ],
-                value="A",
+                value='A',
+                style={'width':'60%', 'text-align':'center'}
             ),
-            dcc.Graph(id="parking_lot"),  # Updated to use a Graph
+            html.Button('Check Statistics', id='button-check-statistics', style={'width':'40%'}),
+        ], style={'display':'flex', "justify-content":"space-between"}),
+        # Graph placeholder
+        html.Div([
+            
+            dcc.Graph(
+                id='graphA',
+                figure= {}
+            )
+        ], id="DivSectionA",
+         style={'display':'none'} 
+         ),
+        html.Div([
+            dcc.Graph(
+                id='graphB',
+                figure= {}
+            )
+        ], id="DivSectionB",
+        style={'display':'none'}),
+        # Div with a button and two inputs
+        html.Div([
+          
             html.Div([
-                dcc.Input(id="plate_input", type="text", placeholder="Plate"),
-                dcc.Dropdown(
-                    id="type_selector",
-                    options=[
-                        {"label": "Car", "value": "car"},
-                        {"label": "Bike", "value": "bike"},
-                    ],
-                    value="car",
-                ),
-                html.Button('Done', id='submit-button', n_clicks=0),
+                html.Label('Plate:'),
+                dcc.Input(id='plate-input', type='text'),
+                html.Label('Space:'),
+                dcc.Input(id='space-input', type='number'),
+                html.Button('Ok', id='submitbtn', n_clicks=0),
+            ], style={'display': 'flex', 'justifyContent': 'space-between'})
             ]),
-            html.Div(id="output_text"),
-            dcc.Interval(id='interval-component', interval=1*1000, n_intervals=0),  # 1 second
+            html.Div(id="DummyOut", children={})
+            
+           
         ])
+       
 
-        return layout
-
-        import matplotlib.pyplot as plt
-
-     
-
-    def set_callbacks():
-        def generate_parking_lot_graph():
-            fig, ax = plt.subplots()
-            
-            rows = 5
-            columns = 8
-            space_between_rows = 1
-            
-            # Set the plot limits based on the number of rows and columns
-            ax.set_xlim(0, columns)
-            ax.set_ylim(0, rows * (space_between_rows + 1))
-            
-            # Create the cell stalls
-            for row in range(rows):
-                for column in range(columns):
-                    cell_x = column
-                    cell_y = row * (space_between_rows + 1)
-                    rect = plt.Rectangle((cell_x, cell_y), 1, 1, facecolor='white', edgecolor='black')
-                    ax.add_patch(rect)
-            
-            # Customize the plot appearance
-            ax.set_aspect('equal')
-            ax.set_xticks([])
-            ax.set_yticks([])
-            ax.spines['top'].set_visible(False)
-            ax.spines['right'].set_visible(False)
-            ax.spines['bottom'].set_visible(False)
-            ax.spines['left'].set_visible(False)
-            plt.box(False)
-            
-            return fig
-
-        @app.callback(
-            Output('parking_lot', 'figure'),
-            [Input('submit-button', 'n_clicks')],
-            [State('plate_input', 'value'),
-            State('type_selector', 'value'),
-            State('row_input', 'value'),
-            State('column_input', 'value')]
-        )
-
-        def add_car_to_parking_lot(n_clicks, plate, vehicle_type, row, column):
-            if n_clicks and n_clicks > 0:
-                # Perform the logic to add the car to the parking lot data
-                # For example, you can update a data structure or an Excel file
-                
-                # Generate the new graph with the updated parking lot data
-                updated_parking_lot = generate_parking_lot_graph()
-
-                # Load the car image
-                car_image = Image.open("bmw.jpg")
-                
-                # Calculate the coordinates of the cell based on row and column
-                cell_x = int(column) - 1
-                cell_y = int(row) - 1
-                
-                # Calculate the size of the cell based on the graph dimensions
-                graph_width, graph_height = updated_parking_lot.get_size_inches()
-                cell_width = graph_width / columns
-                cell_height = graph_height / (rows * (space_between_rows + 1))
-                
-                # Calculate the position and size of the image within the cell
-                image_x = cell_x * cell_width
-                image_y = cell_y * cell_height
-                image_width = cell_width
-                image_height = cell_height
-                
-                # Add the car image to the parking lot graph
-                ax = updated_parking_lot.axes[0]
-                ax.imshow(car_image, extent=(image_x, image_x + image_width, image_y, image_y + image_height), aspect='auto')
-                
-                return updated_parking_lot
-
-            raise dash.exceptions.PreventUpdate
+    def set_callbacks(self):
 
         
-     
+        @self.app.callback(
+            Output(component_id='DummyOut',component_property='children'),
+            [Input(component_id="submitbtn", component_property="n_clicks")],
+            [State(component_id="plate-input", component_property="value"),
+            State(component_id="space-input", component_property="value"),
+            State(component_id="select-parking-space", component_property="value")],
+            prevent_initial_call= True 
+        )
+
+        def update_graph2(n, plate, place,parkingSection  ):
+             
+            if(n>=0 and plate  != "" and place != ""):
+                if not (self.Parking.addVehicle('Car', plate, place)):
+                    print("error adding a new car, identify the error to display it in ui")
+                else:
+                    print("working just fine ")
+            else:
+                pass 
+
+            update_graph(parkingSection)
+
+            return html.Div()
+
+            
+        
+         # Callback to update graph baseed on input section A/ B 
+        @self.app.callback(
+        [Output(component_id='graphA',component_property='figure'),
+        Output(component_id='DivSectionA',component_property='style'),
+        Output(component_id='graphB',component_property='figure'),
+        Output(component_id='DivSectionB',component_property='style')],
+        [Input(component_id="select-parking-space", component_property="value")],
+        
+        prevent_initial_call= False 
+       )
+
+        def update_graph( value_space ):
+
+            print(f"value space: {value_space}")
+        
+            matrix = self.Parking.getParkingCurrent()
+        
+            if(value_space == 'A' ):
+            
+                parking_lot = matrix[:5] 
+                
+                figure = self.create_graph(parking_lot)
+                return  figure , {"display":""}, no_update, {"display":"none"}
+            else:
+                
+                parking_lot = matrix[-5:]
+                
+                figure = self.create_graph(parking_lot, 2)
+                return no_update ,  {"display":"none"}, figure,{"display":""}
+    
+        
 
     def run(self, debug=False):
         self.app.layout = self.layout
@@ -197,63 +336,97 @@ class Excel:
 
 
     def __init__(self, HEAD):
-
-        
-        self.excel_path = EXCEL_PATH
+       
+        self.excel_path = EXCEL_PATH  # Reemplaza con la ruta real de tu archivo Excel
         self.excel = openpyxl.load_workbook(self.excel_path)
         self.sheet = self.excel.active
+        
+        self.headers = [attr for attr in HEAD.__dict__.keys() if not attr.startswith('__')]
 
-        self.headers =  list(HEAD.__dict__.keys())
-        #get the index of the header where column is isparking
-        self.parking_column_index = None
-        try:
-            self.parking_column_index = self.headers.index('isParking')+1
-        except:
-            pass
 
-        #create column headers
-        self.sheet.append(self.headers)
-        self.excel.save(self.excel_path)
+         
+        existing_headers = self.sheet[1]
+        if existing_headers[0].value is None:
+            for idx, header in enumerate(self.headers, start=1):
+                self.sheet.cell(row=1, column=idx, value=header)
+        
+            self.excel.save(self.excel_path)
+            
+        else:
+            return
+        
+        
+        
 
     def open_car(self, obj):
-        row.data= list(vars(obj).values())
+        row_data= list(vars(obj).values())
+        print("ola")
+        print(f"data: {row_data}")
         self.sheet.append(row_data)
         self.excel.save(self.excel_path)
 
     def close_car(self, plate):
 
+        for i, row in enumerate(self.sheet.iter_rows(min_row=2, values_only=True), start=2):
+            print(row[1])
+            if row and row[1] == plate:
+                # Editar la columna 5 y reemplazar el texto existente por "Empty"
+                print(self.sheet.cell)
+                self.sheet.cell(row=i, column=6, value="Empty")
 
-        if self.parking_column_index is not None:
-            for row in self.sheet.iter_rows(min_row=2, values_only=True):
-                if row[0] == plate:
-                    row_index = seelf.sheet.index(row)+2
-                    self.sheet.cell(row=row_index, column=self.parking_column_index, value =False)
-                    self.excel.save(self.excel_path)
-                    break
-                else:
-                    print("plate was not found")
-        else:
-            print("Error in close_car definition, not column index found ")
+                # Escribir la fecha actual y la hora en la columna 3
+                current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                self.sheet.cell(row=i, column=4, value=current_datetime)
 
-    def get_car_by_plate(self, plate):
+                self.sheet.cell(row=i, column= 5, value='none')
 
-        if self.parking_column_index is not None:
+                self.excel.save(self.excel_path)
+                break
+            else:
+                print("plate was not found")
+                    
+
+    def checkCellNUmberisFree(self, cellNumber, cellState="Occupied"):
+         for row in self.sheet.iter_rows(min_row=2 , values_only=True):
+            if row and row[4] == cellNumber and row[5] == cellState :
+                return False
+        
+         return True 
+
+
+    def get_car_by_plate(self, plate, cellState ):
+
+        
             for row in self.sheet.iter_rows(min_row=2 , values_only=True):
-                if row[0] == plate and row[self.parking_column_index -1]:
+                if row and row[1] == plate and row[5] == cellState :
                     car_data = {}
                     for i, header in enumerate(self.headers):
                         car_data[header] = row[i]
                     return car_data
-        else:
-            return None 
+    
+    def getCarsByState(self, cellState="Occupied", ):
 
-    def is_car_parked(self, plate):
+        cars = []
+        for row in self.sheet.iter_rows(min_row=2 , values_only=True):
+            if row and row[5] == "Occupied" :
+                cars.append(row[4])
+
+        return cars 
+
+
+    def is_car_parked(self, plate, cellState="Occupied"):
          for row in self.sheet.iter_rows(min_row=2, values_only=True):
-            if row[0] == plate and row[self.parking_column_index-1]:
+            if row and row[1] == plate and row[5] == cellState :
                 return true 
          return false
 
- 
+
+#park = Parking_Lot(80)
+
+#ark.addVehicle('Car', 'V4k3K9', 20)
+
+#print(park.getParkingCurrent())
+
 
 # Create a Dash application object
 app = Dash(__name__)
